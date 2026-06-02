@@ -5,6 +5,107 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planner Nutricional — Cami 🥗</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+
+  // ── CONFIGURACIÓN FIREBASE ──────────────────────────────────────────────────
+  // Reemplazá estos valores con los de tu proyecto en Firebase Console
+  // (Project settings → Your apps → SDK setup and configuration)
+  const firebaseConfig = {
+    apiKey:            "AIzaSyBB5MIvgcZVj3CzokjdaNxE5McgE8qQi6k",
+    authDomain:        "planner-cami.firebaseapp.com",
+    projectId:         "planner-cami",
+    storageBucket:     "planner-cami.firebasestorage.app",
+    messagingSenderId: "1056666387792",
+    appId:             "1:1056666387792:web:c4d1fcc7457e695e6b9855"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  // ── HELPERS DE FIRESTORE ────────────────────────────────────────────────────
+  // Guarda el objeto `custom` (comidas editadas) en Firestore
+  async function saveCustom(customObj) {
+    try {
+      await setDoc(doc(db, "planner", "custom"), customObj);
+    } catch (e) {
+      console.error("Error guardando comidas:", e);
+    }
+  }
+
+  // Guarda el objeto `superData` (lista del súper) en Firestore
+  async function saveSuperData(superObj) {
+    try {
+      // Firestore no acepta objetos con keys numéricas directas → serializar
+      await setDoc(doc(db, "planner", "superData"), { data: JSON.stringify(superObj) });
+    } catch (e) {
+      console.error("Error guardando súper:", e);
+    }
+  }
+
+  // Carga datos iniciales y suscribe listeners en tiempo real
+  async function initFirebase() {
+    // Esperar a que el HTML haya inicializado sus variables
+    await new Promise(r => setTimeout(r, 0));
+
+    // --- custom (comidas) ---
+    const customSnap = await getDoc(doc(db, "planner", "custom"));
+    if (customSnap.exists()) {
+      const data = customSnap.data();
+      Object.assign(window._custom, data);
+      if (typeof renderCal  === "function") renderCal();
+      if (typeof renderWeek === "function") renderWeek();
+    }
+    // Listener en tiempo real para custom
+    onSnapshot(doc(db, "planner", "custom"), snap => {
+      if (snap.exists()) {
+        Object.keys(window._custom).forEach(k => delete window._custom[k]);
+        Object.assign(window._custom, snap.data());
+        if (typeof renderCal  === "function") renderCal();
+        if (typeof renderWeek === "function") renderWeek();
+      }
+    });
+
+    // --- superData ---
+    const superSnap = await getDoc(doc(db, "planner", "superData"));
+    if (superSnap.exists() && superSnap.data().data) {
+      const parsed = JSON.parse(superSnap.data().data);
+      // Merge: respetá la estructura existente, pisá con lo guardado
+      Object.keys(parsed).forEach(week => {
+        if (window._superData[week]) {
+          Object.keys(parsed[week]).forEach(store => {
+            window._superData[week][store] = parsed[week][store];
+          });
+        }
+      });
+      if (typeof renderSuper === "function") renderSuper();
+    }
+    // Listener en tiempo real para superData
+    onSnapshot(doc(db, "planner", "superData"), snap => {
+      if (snap.exists() && snap.data().data) {
+        const parsed = JSON.parse(snap.data().data);
+        Object.keys(parsed).forEach(week => {
+          if (window._superData[week]) {
+            Object.keys(parsed[week]).forEach(store => {
+              window._superData[week][store] = parsed[week][store];
+            });
+          }
+        });
+        if (typeof renderSuperGrid === "function") renderSuperGrid();
+      }
+    });
+  }
+
+  // Exponer funciones de guardado al scope global (las usan las funciones JS del body)
+  window._fb = { saveCustom, saveSuperData };
+
+  // Arrancar una vez que el DOM esté listo
+  document.addEventListener("DOMContentLoaded", initFirebase);
+</script>
 <style>
 /* ── TOKENS ── */
 :root {
@@ -423,7 +524,9 @@ function dayType(dow,key){
 function isCouple(dow){return dow>=3;} // Wed=3...Sat=6
 function isTueDinner(dow){return dow===2;}
 
-const custom={};
+// Expuesto en window para que el módulo Firebase pueda leer/escribir
+const custom = {};
+window._custom = custom;
 
 function getMeals(y,m,d){
   const k=dkey(y,m,d);
@@ -644,6 +747,8 @@ function saveModal(){
     sn:document.getElementById('ed-sn').value,
     dn:document.getElementById('ed-dn').value,
   };
+  // Persistir en Firestore
+  if (window._fb) window._fb.saveCustom(custom);
   closeModal();
   renderCal();
   renderWeek();
@@ -701,6 +806,7 @@ const SUPER_INIT={
 
 // superData[week][storeId] = [{name,qty,done}]
 let superData={};
+window._superData = superData;
 let sWeek=0;
 let sStore='verduleria';
 
@@ -756,10 +862,10 @@ function renderItem(ii,it){
   </div>`;
 }
 
-function toggleItem(ii){superData[sWeek][sStore][ii].done=!superData[sWeek][sStore][ii].done;renderSuperGrid();}
-function updName(ii,v){superData[sWeek][sStore][ii].name=v;}
-function updQty(ii,v){superData[sWeek][sStore][ii].qty=v;}
-function delItem(ii){superData[sWeek][sStore].splice(ii,1);renderSuperGrid();}
+function toggleItem(ii){superData[sWeek][sStore][ii].done=!superData[sWeek][sStore][ii].done;renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
+function updName(ii,v){superData[sWeek][sStore][ii].name=v;if(window._fb)window._fb.saveSuperData(superData);}
+function updQty(ii,v){superData[sWeek][sStore][ii].qty=v;if(window._fb)window._fb.saveSuperData(superData);}
+function delItem(ii){superData[sWeek][sStore].splice(ii,1);renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
 function addItem(){
   const n=document.getElementById('new-name').value.trim();
   if(!n)return;
@@ -767,8 +873,9 @@ function addItem(){
   document.getElementById('new-name').value='';
   document.getElementById('new-qty').value='';
   renderSuperGrid();
+  if(window._fb)window._fb.saveSuperData(superData);
 }
-function resetSuper(){superData[sWeek][sStore].forEach(i=>i.done=false);renderSuperGrid();}
+function resetSuper(){superData[sWeek][sStore].forEach(i=>i.done=false);renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
 
 function renderSuper(){renderWPills();renderStoreTabs();renderSuperGrid();}
 
