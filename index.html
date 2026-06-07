@@ -162,8 +162,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
 .cal-hdr-row{display:grid;grid-template-columns:repeat(7,1fr);background:var(--dark);}
 .cal-dow{text-align:center;padding:11px 4px;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(250,247,242,.5);}
 .cal-body{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;background:var(--border);}
-/* each cell explicitly sized so columns stay uniform */
-.cal-cell{background:#fff;min-height:130px;padding:9px 8px 8px;cursor:pointer;transition:background .12s;position:relative;display:flex;flex-direction:column;gap:4px;}
+/* altura fija para que todas las celdas de una fila sean iguales */
+.cal-cell{background:#fff;height:150px;padding:9px 8px 8px;cursor:pointer;transition:background .12s;position:relative;display:flex;flex-direction:column;gap:4px;overflow:hidden;}
 .cal-cell:hover:not(.cal-empty){background:#fff8f3;}
 .cal-empty{background:var(--cream);cursor:default;pointer-events:none;}
 .cal-cell.is-today{background:#fff5ee;}
@@ -181,8 +181,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
 .cb-zarate{background:var(--sage-l);color:var(--sage-d);}
 .cb-viaje{background:var(--amber-l);color:var(--amber-d);}
 .cb-feriado{background:var(--mauve-l);color:var(--mauve-d);}
-.c-meals{display:flex;flex-direction:column;gap:2px;flex:1;}
-.cmeal{font-size:9px;line-height:1.35;color:var(--muted);background:var(--cream);border-radius:3px;padding:2px 4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.c-meals{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;}
+.cmeal{font-size:9px;line-height:1.35;color:var(--muted);background:var(--cream);border-radius:3px;padding:2px 4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex-shrink:0;}
 .cm-b{border-left:2px solid var(--amber);}
 .cm-l{border-left:2px solid var(--sage-d);}
 .cm-s{border-left:2px solid var(--mauve);}
@@ -620,7 +620,8 @@ function getMeals(y,m,d){
 }
 
 // ═══════════ CALENDAR ═══════════
-let calY=2026,calM=0; // Enero 2026
+const _now=new Date();
+let calY=_now.getFullYear(),calM=_now.getMonth();
 
 function renderCal(){
   document.getElementById('mnav-lbl').textContent=`${MONTHS_ES[calM]} ${calY}`;
@@ -682,8 +683,8 @@ function nextMonth(){calM++;if(calM>11){calM=0;calY++;}renderCal();}
 
 // ═══════════ WEEK VIEW ═══════════
 // Weeks relative to START: week 0 = May 25-31, week 1 = Jun 1-7, etc.
-let wkIdx=0;
-const TOTAL_WEEKS=53; // Todo 2026
+let wkIdx=Math.max(0,Math.floor((_now-START)/86400000/7));
+const TOTAL_WEEKS=53;
 
 function getWeekDays(wi){
   return Array.from({length:7},(_,i)=>{
