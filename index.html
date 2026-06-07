@@ -287,10 +287,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
   <div class="hdr-in">
     <div class="hdr-tag">🥗 Planner nutricional</div>
     <h1>Comé bien,<br><span>Cami</span> 💪</h1>
-    <div class="hdr-sub">4 meses · 4 comidas diarias · gym + vida real</div>
+    <div class="hdr-sub">2026 · 4 comidas diarias · gym + vida real</div>
     <div class="hdr-badges">
       <div class="hbdg"><div class="hbdg-dot" style="background:var(--blue-d)"></div> Lun–Mar: Oficina CABA (vianda)</div>
-      <div class="hbdg"><div class="hbdg-dot" style="background:var(--sage-d)"></div> Mié–Sáb: Home office Zárate</div>
+      <div class="hbdg"><div class="hbdg-dot" style="background:var(--sage-d)"></div> Mié–Vie: Home office Zárate</div>
       <div class="hbdg"><div class="hbdg-dot" style="background:var(--amber-d)"></div> Dom: Viaje a CABA</div>
       <div class="hbdg"><div class="hbdg-dot" style="background:var(--mauve)"></div> 👫 Mar noche + Mié–Dom en pareja</div>
     </div>
@@ -383,10 +383,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
 // ═══════════ CONSTANTS ═══════════
 const MONTHS_ES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DOW_FULL=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-// Planner starts Mon 25 May 2025
-const START = new Date(2025,4,25); // month is 0-indexed: 4=May
-// In-planner range: 25 May → end of August 2025 (≈14 weeks)
-const END = new Date(2025,7,31); // Aug 31 2025
+// Planner 2026: 1 Jan → 31 Dec
+const START = new Date(2026,0,1);
+const END   = new Date(2026,11,31);
 
 // ═══════════ MEAL POOLS ═══════════
 const P={
@@ -507,26 +506,50 @@ function pick(arr,seed){
 // ═══════════ DATE HELPERS ═══════════
 function dkey(y,m,d){return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
 function daysSince(y,m,d){return Math.floor((new Date(y,m,d)-START)/86400000);}
-function inPlan(y,m,d){const ds=daysSince(y,m,d);return ds>=0&&new Date(y,m,d)<=END;}
+function inPlan(y,m,d){const dt=new Date(y,m,d);return dt>=START&&dt<=END;}
 
-// Sunday = 0 in JS; we want Mon-first for display but DOW logic stays JS-native
-// type based on JS dow: 0=Sun(viaje),1=Mon(caba),2=Tue(caba),3-6(zarate)
-const FERIADOS=['2025-05-25','2025-07-09']; // 25 mayo, 9 julio
+// Sunday = 0 in JS
+const FERIADOS=[
+  '2026-01-01','2026-02-16','2026-02-17', // Año Nuevo, Carnaval
+  '2026-03-24','2026-04-02','2026-04-03','2026-04-06', // Memoria, Malvinas, Semana Santa
+  '2026-05-01','2026-05-25', // Trabajo (lunes), 25 Mayo (lunes)
+  '2026-06-15','2026-06-20', // Güemes, Belgrano (domingo→lunes 15)
+  '2026-07-09', // Independencia (jueves)
+  '2026-08-17', // San Martín (lunes)
+  '2026-10-12', // Diversidad (lunes)
+  '2026-11-20', // Soberanía (viernes, puente)
+  '2026-12-08','2026-12-25', // Inmaculada, Navidad
+];
 
 function dayType(dow,key){
   if(FERIADOS.includes(key)) return 'feriado';
-  if(dow===0) return 'viaje';    // Sunday
-  if(dow===1||dow===2) return 'caba'; // Mon,Tue
-  return 'zarate'; // Wed-Sat
+  if(dow===0) return 'viaje';      // Domingo: viaje a CABA
+  if(dow===1||dow===2) return 'caba'; // Lun, Mar: oficina CABA
+  if(dow===3||dow===4||dow===5) return 'zarate'; // Mié, Jue, Vie: home office Zárate
+  return 'finde'; // Sábado: fin de semana (sin tag de trabajo)
 }
 
-// Couple: Wed–Sat all meals, Tue dinner only
-function isCouple(dow){return dow>=3;} // Wed=3...Sat=6
+// Couple: Mié=3...Sáb=6 all meals, Mar dinner only
+function isCouple(dow){return dow>=3;}
 function isTueDinner(dow){return dow===2;}
 
 // Expuesto en window para que el módulo Firebase pueda leer/escribir
 const custom = {};
 window._custom = custom;
+
+// Extraer palabra clave para evitar repetición en el día
+function keyWord(meal){
+  const words=meal.d.toLowerCase().split(/[\s,+]/);
+  const skip=['de','con','al','la','en','y','a','el','los','las','del','un','una'];
+  return words.find(w=>w.length>3&&!skip.includes(w))||words[0]||'';
+}
+function pickAvoid(arr,seed,avoid){
+  for(let offset=0;offset<arr.length;offset++){
+    const i=((seed*7+seed*3+offset*13)%arr.length+arr.length)%arr.length;
+    if(!arr[i].d.toLowerCase().includes(avoid.toLowerCase())) return {...arr[i]};
+  }
+  return pick(arr,seed+1);
+}
 
 function getMeals(y,m,d){
   const k=dkey(y,m,d);
@@ -534,43 +557,70 @@ function getMeals(y,m,d){
   const dow=new Date(y,m,d).getDay();
   const type=dayType(dow,k);
   const seed=daysSince(y,m,d);
+  // seed único por día del año para evitar repetición semanal
+  const ds = d + (new Date(y,m,d).getMonth()*31) + seed*3;
   const couple=isCouple(dow);
   const tueDin=isTueDinner(dow);
-
-  // Comfort food logic:
-  // Sat (6) lunch → always finde_almuerzo
-  // Sat (6) dinner → always finde_cena
-  // Fri (5) dinner → finde_cena every other week
-  // Sun (0) dinner → finde_cena every other week
-  // Wed (3) dinner → finde_cena every 3rd week (mid-week treat)
   const week=Math.floor(seed/7);
-  const isFindeLunch = dow===6; // Saturday lunch
-  const isFindeDinner = dow===6 || (dow===5&&week%2===0) || (dow===0&&week%2===1) || (dow===3&&week%3===0);
-  const isFindeAlmuerzo = dow===6; // Saturday lunch = special
+  const isFindeDinner = dow===6 || (dow===5&&week%2===0);
 
   let b,l,s,dn;
+
   if(type==='feriado'){
-    b=pick(P.db_casa,seed); l=pick(P.al_p,seed+1); s=pick(P.me_p,seed+2); dn=pick(P.cn_p,seed+3);
+    b=pick(P.db_casa,ds);
+    l=pick(P.al_p,ds+7);
+    s=pick(P.me_p,ds+13);
+    dn=pickAvoid(P.cn_p,ds+19,keyWord(l));
+
   } else if(type==='viaje'){
-    b={...pick(P.db_casa,seed),n:'Antes de salir en Zárate'};
-    l={...pick(P.al_caba,seed+1),n:'Llevás en tupper si salís tarde'};
-    s=pick(P.me,seed+2);
-    dn={...pick(P.cn_sola,seed+3),n:'Rápida al llegar a CABA'};
+    // Domingo: la cena = lo que va a llevar el lunes al mediodía
+    b={...pick(P.db_casa,ds),n:'Antes de salir en Zárate'};
+    l={...pick(P.al_caba,ds+7),n:'Llevás en tupper si salís tarde'};
+    s=pick(P.me,ds+13);
+    // Sincronizo con el seed del lunes siguiente para que coincida
+    const lunesDs = ds+1+3; // +1 día, mismo offset
+    const vianda=pick(P.al_caba,lunesDs+7);
+    dn={...vianda,n:'Misma vianda que el lunes al mediodía — prepará el doble 🍱'};
+
   } else if(type==='caba'){
-    b=pick(P.db_caba,seed); l=pick(P.al_caba,seed+1); s=pick(P.me,seed+2);
-    dn=tueDin?{...pick(P.cn_p,seed+3),n:'👫 Primera cena juntos al volver'}:pick(P.cn_sola,seed+3);
+    b=pick(P.db_caba,ds);
+    s=pick(P.me,ds+13);
+    if(dow===1){ // Lunes
+      // Almuerzo = vianda preparada el domingo a la noche
+      const domDs = ds-1-3;
+      const viandalunes=pick(P.al_caba,domDs+1+7);
+      l={...viandalunes,n:'Vianda que preparaste el domingo 🍱'};
+      // Cena del lunes = vianda que se lleva el martes
+      // Para que coincida, el martes almuerzo usa el mismo seed
+      dn=pick(P.al_caba,ds+7);
+      dn={...dn,n:'La llevás mañana al trabajo 🍱'};
+    } else { // Martes
+      // Almuerzo = vianda de la cena del lunes
+      const lunesDs = ds-1-3;
+      const viandamartes=pick(P.al_caba,lunesDs+7);
+      l={...viandamartes,n:'Vianda del lunes a la noche 🍱'};
+      dn=tueDin?{...pickAvoid(P.cn_p,ds+19,keyWord(l)),n:'👫 Primera cena juntos al volver'}:pickAvoid(P.cn_sola,ds+19,keyWord(l));
+    }
+
+  } else if(type==='finde'){
+    // Sábado — sin tag de trabajo
+    b=pick(P.db_casa,ds);
+    l=pick(P.finde_almuerzo,ds+7);
+    s=pick(P.me_p,ds+13);
+    dn=pickAvoid(P.finde_cena,ds+19,keyWord(l));
+
   } else {
-    // zarate (Wed–Sat) and Sun (viaje already handled above so this is just Wed-Sat)
-    b=pick(P.db_casa,seed+1);
-    l=isFindeAlmuerzo?pick(P.finde_almuerzo,seed):pick(P.al_p,seed);
-    s=pick(P.me_p,seed+3);
-    dn=isFindeDinner?pick(P.finde_cena,seed+2):pick(P.cn_p,seed+2);
+    // Miércoles, Jueves, Viernes — home office Zárate
+    b=pick(P.db_casa,ds);
+    l=pick(P.al_p,ds+7);
+    s=pick(P.me_p,ds+13);
+    dn=isFindeDinner?pickAvoid(P.finde_cena,ds+19,keyWord(l)):pickAvoid(P.cn_p,ds+19,keyWord(l));
   }
   return {b:b.d,l:l.d,s:s.d,d:dn.d,bn:b.n||'',ln:l.n||'',sn:s.n||'',dn:dn.n||''};
 }
 
 // ═══════════ CALENDAR ═══════════
-let calY=2025,calM=5; // start at June (0-indexed)
+let calY=2026,calM=0; // Enero 2026
 
 function renderCal(){
   document.getElementById('mnav-lbl').textContent=`${MONTHS_ES[calM]} ${calY}`;
@@ -602,10 +652,10 @@ function renderCal(){
     }
 
     const meals=getMeals(calY,calM,day);
-    const badgeTxt={caba:'CABA',zarate:'Zárate',viaje:'Dom',feriado:'Feriado'}[type];
-    const badgeCls={caba:'cb-caba',zarate:'cb-zarate',viaje:'cb-viaje',feriado:'cb-feriado'}[type];
+    const badgeTxt={caba:'CABA',zarate:'Zárate',viaje:'Dom',feriado:'Feriado',finde:'Sábado'}[type];
+    const badgeCls={caba:'cb-caba',zarate:'cb-zarate',viaje:'cb-viaje',feriado:'cb-feriado',finde:'cb-zarate'}[type];
 
-    html+=`<div class="cal-cell t-${type}${isToday?' is-today':''}" onclick="openModal(${calY},${calM},${day})">
+    html+=`<div class="cal-cell t-${type==="finde"?"zarate":type}${isToday?' is-today':''}" onclick="openModal(${calY},${calM},${day})">
       <div class="c-top">
         <div class="c-dn">${day}</div>
         <span class="c-badge ${badgeCls}">${badgeTxt}</span>
@@ -633,7 +683,7 @@ function nextMonth(){calM++;if(calM>11){calM=0;calY++;}renderCal();}
 // ═══════════ WEEK VIEW ═══════════
 // Weeks relative to START: week 0 = May 25-31, week 1 = Jun 1-7, etc.
 let wkIdx=0;
-const TOTAL_WEEKS=14; // May 25 → Aug 31 ≈ 14 weeks
+const TOTAL_WEEKS=53; // Todo 2026
 
 function getWeekDays(wi){
   return Array.from({length:7},(_,i)=>{
@@ -650,8 +700,8 @@ function renderWeek(){
   document.getElementById('wk-ttl').textContent=`Semana ${wkIdx+1}`;
   document.getElementById('wk-sub').textContent=`${fmtD(days[0])} – ${fmtD(days[6])} ${days[0].getFullYear()}`;
 
-  const COL={caba:'var(--blue-d)',zarate:'var(--sage-d)',viaje:'#8A6000',feriado:'var(--mauve-d)'};
-  const LBL={caba:'🏢 Oficina CABA',zarate:'🏡 Home office Zárate',viaje:'✈️ Viaje a CABA',feriado:'🎉 Feriado'};
+  const COL={caba:'var(--blue-d)',zarate:'var(--sage-d)',viaje:'#8A6000',feriado:'var(--mauve-d)',finde:'var(--sage-d)'};
+  const LBL={caba:'🏢 Oficina CABA',zarate:'🏡 Home office Zárate',viaje:'✈️ Viaje a CABA',feriado:'🎉 Feriado',finde:'🛋️ Fin de semana'};
   const MDEFS=[
     {k:'b',nk:'bn',lbl:'Desayuno',cls:'lbl-b',h:'8:00'},
     {k:'l',nk:'ln',lbl:'Almuerzo',cls:'lbl-l',h:'13:00'},
@@ -705,8 +755,8 @@ function openModal(y,m,d){
   const couple=isCouple(dow);
   const tueDin=isTueDinner(dow);
 
-  const COL={caba:['var(--blue-l)','var(--blue-d)'],zarate:['var(--sage-l)','var(--sage-d)'],viaje:['var(--amber-l)','var(--amber-d)'],feriado:['var(--mauve-l)','var(--mauve-d)']};
-  const LBL={caba:'🏢 Oficina CABA',zarate:'🏡 Home office Zárate',viaje:'✈️ Viaje a CABA',feriado:'🎉 Feriado'};
+  const COL={caba:['var(--blue-l)','var(--blue-d)'],zarate:['var(--sage-l)','var(--sage-d)'],viaje:['var(--amber-l)','var(--amber-d)'],feriado:['var(--mauve-l)','var(--mauve-d)'],finde:['var(--sage-l)','var(--sage-d)']};
+  const LBL={caba:'🏢 Oficina CABA',zarate:'🏡 Home office Zárate',viaje:'✈️ Viaje a CABA',feriado:'🎉 Feriado',finde:'🛋️ Fin de semana'};
   const [bg,tc]=COL[type];
 
   document.getElementById('modal-ttl').textContent=`${DOW_FULL[dow]} ${d} de ${MONTHS_ES[m]}`;
@@ -811,7 +861,7 @@ let sWeek=0;
 let sStore='verduleria';
 
 function initSuper(){
-  for(let w=0;w<14;w++){
+  for(let w=0;w<53;w++){
     superData[w]={};
     STORES.forEach(st=>{
       superData[w][st.id]=SUPER_INIT[st.id].map(([name,qty])=>({name,qty,done:false}));
@@ -821,7 +871,7 @@ function initSuper(){
 
 function renderWPills(){
   document.getElementById('wpills').innerHTML=
-    Array.from({length:14},(_,i)=>`<button class="wpill ${i===sWeek?'active':''}" onclick="setSWeek(${i})">Sem ${i+1}</button>`).join('');
+    Array.from({length:53},(_,i)=>`<button class="wpill ${i===sWeek?'active':''}" onclick="setSWeek(${i})">Sem ${i+1}</button>`).join('');
 }
 
 function setSWeek(w){sWeek=w;renderWPills();renderSuper();}
