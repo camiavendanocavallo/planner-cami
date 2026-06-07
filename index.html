@@ -878,55 +878,55 @@ function renderWPills(){
 function setSWeek(w){sWeek=w;renderWPills();renderSuper();}
 
 function renderStoreTabs(){
-  document.getElementById('store-tabs').innerHTML=STORES.map(st=>
-    `<button class="store-tab ${st.id===sStore?'active':''}" style="${st.id===sStore?'background:'+st.color:''}" onclick="setSStore('${st.id}')">${st.icon} ${st.label}</button>`
-  ).join('');
+  // Tabs ocultos — se muestran todas las listas juntas
+  document.getElementById('store-tabs').innerHTML='';
 }
 
-function setSStore(id){sStore=id;renderStoreTabs();renderSuperGrid();}
+function setSStore(id){sStore=id;renderSuperGrid();}
 
 function renderSuperGrid(){
-  const st=STORES.find(s=>s.id===sStore);
-  const items=superData[sWeek][sStore];
-  document.getElementById('s-grid').innerHTML=`
-    <div class="s-cat" style="border-top:3px solid ${st.color}">
-      <div class="s-cat-ttl" style="color:${st.color}">${st.icon} ${st.label} — Semana ${sWeek+1}</div>
-      <div id="items-list">
-        ${items.map((it,ii)=>renderItem(ii,it)).join('')}
+  document.getElementById('s-grid').innerHTML=STORES.map(st=>{
+    const items=superData[sWeek][st.id];
+    const done=items.filter(i=>i.done).length;
+    return `<div class="s-cat" style="border-top:3px solid ${st.color}">
+      <div class="s-cat-ttl" style="color:${st.color}">${st.icon} ${st.label} <span style="font-weight:400;opacity:.6;font-size:9.5px">${done}/${items.length} ✓</span></div>
+      <div id="items-list-${st.id}">
+        ${items.map((it,ii)=>renderItem(st.id,ii,it)).join('')}
       </div>
       <div class="add-row">
-        <input class="add-inp" id="new-name" placeholder="Agregar producto..." onkeydown="if(event.key==='Enter')addItem()">
-        <input class="add-inp" id="new-qty" placeholder="Cantidad" style="max-width:90px" onkeydown="if(event.key==='Enter')addItem()">
-        <button class="add-btn" onclick="addItem()">+ Agregar</button>
+        <input class="add-inp" id="new-name-${st.id}" placeholder="Agregar producto..." onkeydown="if(event.key==='Enter')addItem('${st.id}')">
+        <input class="add-inp" id="new-qty-${st.id}" placeholder="Cantidad" style="max-width:90px" onkeydown="if(event.key==='Enter')addItem('${st.id}')">
+        <button class="add-btn" onclick="addItem('${st.id}')">+ Agregar</button>
       </div>
     </div>`;
+  }).join('');
 }
 
-function renderItem(ii,it){
-  return `<div class="s-item${it.done?' done':''}" id="sitem-${ii}">
-    <div class="chk" onclick="toggleItem(${ii})">${it.done?'✓':''}</div>
+function renderItem(stId,ii,it){
+  return `<div class="s-item${it.done?' done':''}" id="sitem-${stId}-${ii}">
+    <div class="chk" onclick="toggleItem('${stId}',${ii})">${it.done?'✓':''}</div>
     <div class="s-texts">
-      <input class="s-name-inp" value="${it.name.replace(/"/g,'&quot;')}" onchange="updName(${ii},this.value)">
-      <input class="s-qty-inp" value="${it.qty.replace(/"/g,'&quot;')}" onchange="updQty(${ii},this.value)">
+      <input class="s-name-inp" value="${it.name.replace(/"/g,'&quot;')}" onchange="updName('${stId}',${ii},this.value)">
+      <input class="s-qty-inp" value="${it.qty.replace(/"/g,'&quot;')}" onchange="updQty('${stId}',${ii},this.value)">
     </div>
-    <button class="del-btn" onclick="delItem(${ii})" title="Borrar">✕</button>
+    <button class="del-btn" onclick="delItem('${stId}',${ii})" title="Borrar">✕</button>
   </div>`;
 }
 
-function toggleItem(ii){superData[sWeek][sStore][ii].done=!superData[sWeek][sStore][ii].done;renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
-function updName(ii,v){superData[sWeek][sStore][ii].name=v;if(window._fb)window._fb.saveSuperData(superData);}
-function updQty(ii,v){superData[sWeek][sStore][ii].qty=v;if(window._fb)window._fb.saveSuperData(superData);}
-function delItem(ii){superData[sWeek][sStore].splice(ii,1);renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
-function addItem(){
-  const n=document.getElementById('new-name').value.trim();
+function toggleItem(stId,ii){superData[sWeek][stId][ii].done=!superData[sWeek][stId][ii].done;renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
+function updName(stId,ii,v){superData[sWeek][stId][ii].name=v;if(window._fb)window._fb.saveSuperData(superData);}
+function updQty(stId,ii,v){superData[sWeek][stId][ii].qty=v;if(window._fb)window._fb.saveSuperData(superData);}
+function delItem(stId,ii){superData[sWeek][stId].splice(ii,1);renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
+function addItem(stId){
+  const n=document.getElementById(`new-name-${stId}`).value.trim();
   if(!n)return;
-  superData[sWeek][sStore].push({name:n,qty:document.getElementById('new-qty').value.trim()||'—',done:false});
-  document.getElementById('new-name').value='';
-  document.getElementById('new-qty').value='';
+  superData[sWeek][stId].push({name:n,qty:document.getElementById(`new-qty-${stId}`).value.trim()||'—',done:false});
+  document.getElementById(`new-name-${stId}`).value='';
+  document.getElementById(`new-qty-${stId}`).value='';
   renderSuperGrid();
   if(window._fb)window._fb.saveSuperData(superData);
 }
-function resetSuper(){superData[sWeek][sStore].forEach(i=>i.done=false);renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
+function resetSuper(){STORES.forEach(st=>superData[sWeek][st.id].forEach(i=>i.done=false));renderSuperGrid();if(window._fb)window._fb.saveSuperData(superData);}
 
 function renderSuper(){renderWPills();renderStoreTabs();renderSuperGrid();}
 
